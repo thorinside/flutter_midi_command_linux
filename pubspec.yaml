@@ -11,7 +11,9 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_midi_command_platform_interface: ^0.4.0
-  midi: ^0.1.0
+  midi:
+    git:
+      url: https://github.com/thorinside/dart_midi.git
   ffi: ^2.0.1
   tuple: ^2.0.0
 
