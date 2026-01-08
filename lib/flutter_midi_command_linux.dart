@@ -8,15 +8,22 @@ class LinuxMidiDevice extends MidiDevice {
   int cardId;
   int deviceId;
   AlsaMidiDevice _device;
+  StreamSubscription? _receivedMessagesSub;
 
-  LinuxMidiDevice(this._device, this.cardId, this.deviceId, String name, String type,
-      this._rxStreamCtrl, bool connected)
-      : super(
-          AlsaMidiDevice.hardwareId(cardId, deviceId),
-          name,
-          type,
-          connected,
-        ) {
+  LinuxMidiDevice(
+    this._device,
+    this.cardId,
+    this.deviceId,
+    String name,
+    String type,
+    this._rxStreamCtrl,
+    bool connected,
+  ) : super(
+        AlsaMidiDevice.hardwareId(cardId, deviceId),
+        name,
+        type,
+        connected,
+      ) {
     // Get input, output ports
     var i = 0;
     _device.inputPorts.toList().forEach((element) {
@@ -33,7 +40,7 @@ class LinuxMidiDevice extends MidiDevice {
     connected = true;
 
     // connect up incoming alsa midi data to our rx stream of MidiPackets
-    _device.receivedMessages.listen((event) {
+    _receivedMessagesSub = _device.receivedMessages.listen((event) {
       _rxStreamCtrl.add(MidiPacket(event.data, event.timestamp, this));
     });
     return true;
@@ -44,18 +51,23 @@ class LinuxMidiDevice extends MidiDevice {
   }
 
   disconnect() {
+    _receivedMessagesSub?.cancel();
+    _receivedMessagesSub = null;
     _device.disconnect();
     connected = false;
   }
 }
 
 class FlutterMidiCommandLinux extends MidiCommandPlatform {
-  StreamController<MidiPacket> _rxStreamController = StreamController<MidiPacket>.broadcast();
+  StreamController<MidiPacket> _rxStreamController =
+      StreamController<MidiPacket>.broadcast();
   late Stream<MidiPacket> _rxStream;
-  StreamController<String> _setupStreamController = StreamController<String>.broadcast();
+  StreamController<String> _setupStreamController =
+      StreamController<String>.broadcast();
   late Stream<String> _setupStream;
 
-  Map<String, LinuxMidiDevice> _connectedDevices = Map<String, LinuxMidiDevice>();
+  Map<String, LinuxMidiDevice> _connectedDevices =
+      Map<String, LinuxMidiDevice>();
 
   final List<AlsaMidiDevice> _allAlsaDevices = [];
 
@@ -88,15 +100,19 @@ class FlutterMidiCommandLinux extends MidiCommandPlatform {
             "native",
             _rxStreamController,
             _connectedDevices.containsKey(
-                AlsaMidiDevice.hardwareId(alsMidiDevice.cardId, alsMidiDevice.deviceId)),
+              AlsaMidiDevice.hardwareId(
+                alsMidiDevice.cardId,
+                alsMidiDevice.deviceId,
+              ),
+            ),
           ),
         )
         .toList();
   }
 
-
   /// Prepares Bluetooth system
-  @override Future<void> startBluetoothCentral() async {
+  @override
+  Future<void> startBluetoothCentral() async {
     return Future.error("Not available on linux");
   }
 
@@ -112,7 +128,10 @@ class FlutterMidiCommandLinux extends MidiCommandPlatform {
 
   /// Connects to the device.
   @override
-  Future<void> connectToDevice(MidiDevice device, {List<MidiPort>? ports}) async {
+  Future<void> connectToDevice(
+    MidiDevice device, {
+    List<MidiPort>? ports,
+  }) async {
     print('connect to $device');
 
     var linuxDevice = device as LinuxMidiDevice;
@@ -140,12 +159,17 @@ class FlutterMidiCommandLinux extends MidiCommandPlatform {
 
   @override
   void teardown() {
-    _connectedDevices.values.forEach((device) {
+    _connectedDevices.values.toList().forEach((device) {
       disconnectDevice(device, remove: false);
     });
     _connectedDevices.clear();
-    _setupStreamController.add("deviceDisconnected");
-    _rxStreamController.close();
+    if (!_setupStreamController.isClosed) {
+      _setupStreamController.add("deviceDisconnected");
+      _setupStreamController.close();
+    }
+    if (!_rxStreamController.isClosed) {
+      _rxStreamController.close();
+    }
   }
 
   /// Sends data to the currently connected device.wmidi hardware driver name
